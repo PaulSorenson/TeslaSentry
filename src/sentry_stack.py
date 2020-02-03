@@ -87,17 +87,23 @@ def get_args() -> Namespace:
         "--speed", type=int, default=1, help="int speed multiplier (%(default)s)."
     )
     ap.add_argument(
-        "--scale", type=int, default=4, help="scale down multiplier (%(default)s). "
-        "Eg set to 2 for half the width/height."
+        "--scale",
+        type=int,
+        default=4,
+        help="scale down multiplier (%(default)s). "
+        "Eg set to 2 for half the width/height.",
     )
     ap.add_argument(
-        "--quality", type=int, default=23, help="encode quality (%(default)s). "
-        "Increase this to reduce quality and filesize."
+        "--quality",
+        type=int,
+        default=23,
+        help="encode quality (%(default)s). "
+        "Increase this to reduce quality and filesize.",
     )
     ap.add_argument(
-        "--skip-existing",
+        "--overwrite",
         action="store_true",
-        help="Skip stacking if output file already exists.",
+        help="Silently overwrite output file, otherwise skip.",
     )
     ap.add_argument(
         "--list-dir",
@@ -174,12 +180,15 @@ def main():
     log.info(f"found {len(events)} events")
 
     for event in events:
-        if opt.skip_existing:
+        if not opt.overwrite:
             op = event.output_path(
                 scale=opt.scale, speed=opt.speed, quality=opt.quality
             )
             if op.exists():
-                log.info(f"output: '{op}' exists, skipping.")
+                log.info(
+                    f"output: '{op}' exists, skipping. "
+                    "Add --overwrite on command line to change this."
+                )
                 continue
         print(event)
         print(event.front)
