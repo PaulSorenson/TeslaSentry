@@ -66,6 +66,13 @@ class SentryEvent:
     def views(self):
         return [self.front, self.back, self.left, self.right]
 
+    def output_path(self, scale: int, speed: int, quality: int) -> Path:
+        return (
+            self.event_dir / f"{self.sentry_event_id.strftime('%Y-%m-%d-%H-%M-%S')}"
+            f"_st{scale}_sp{speed}_q{quality}"
+            ".mp4"
+        )
+
 
 def get_args() -> Namespace:
     ap = ArgumentParser()
@@ -77,13 +84,20 @@ def get_args() -> Namespace:
         help="Top level Sentry dir (%(default)s)",
     )
     ap.add_argument(
-        "--speed", type=int, default=1, help="int speed multiplier (%(default)s)"
+        "--speed", type=int, default=1, help="int speed multiplier (%(default)s)."
     )
     ap.add_argument(
-        "--scale", type=int, default=4, help="scale down multiplier (%(default)s)"
+        "--scale", type=int, default=4, help="scale down multiplier (%(default)s). "
+        "Eg set to 2 for half the width/height."
     )
     ap.add_argument(
-        "--quality", type=int, default=23, help="encode quality (%(default)s)"
+        "--quality", type=int, default=23, help="encode quality (%(default)s). "
+        "Increase this to reduce quality and filesize."
+    )
+    ap.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip stacking if output file already exists.",
     )
     ap.add_argument(
         "--list-dir",
@@ -126,7 +140,6 @@ def compose_stack_cmd(
             # hack for pre 10.0 sw with no back video
             cmd.extend(["-i", str(event.event_dir / event.get_view("front"))])
     cmd.extend(["-an", "-filter_complex"])
-
     filter = []
     for i, v in enumerate(views):
         filter.extend([f"[{i}:v]", f"scale=iw/{scale}:ih/{scale}", f"[{v}];"])
@@ -134,22 +147,11 @@ def compose_stack_cmd(
     filter.extend(["[right][left]", "hstack", "[lat];"])
     filter.extend(["[long][lat]", "vstack", "[all];"])
     filter.extend(["[all]", f"setpts={1/speed}*PTS", "[res]"])
-
     filter_string = "".join(filter)
     cmd.append(f"{filter_string}")
-
     cmd.extend(["-c:v", "libx264", "-crf", f"{quality}"])
-
-    dt = event.sentry_event_id
-    suffix = f"st{scale}_sp{speed}_q{quality}"
-    cmd.extend(
-        [
-            "-map",
-            "[res]",
-            f"{event.event_dir / dt.strftime('%Y-%m-%d-%H-%M-%S')}_{suffix}.mp4",
-        ]
-    )
-
+    output_path = event.output_path(scale, speed, quality)
+    cmd.extend(["-map", "[res]", str(output_path)])
     return cmd
 
 
@@ -172,6 +174,13 @@ def main():
     log.info(f"found {len(events)} events")
 
     for event in events:
+        if opt.skip_existing:
+            op = event.output_path(
+                scale=opt.scale, speed=opt.speed, quality=opt.quality
+            )
+            if op.exists():
+                log.info(f"output: '{op}' exists, skipping.")
+                continue
         print(event)
         print(event.front)
         cmd = compose_stack_cmd(
